@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2018 the original author or authors.
+ * Copyright 2002-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,6 +19,7 @@ package org.springframework.orm.jpa.vendor;
 import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.SQLException;
+
 import javax.persistence.EntityManager;
 import javax.persistence.PersistenceException;
 
@@ -75,7 +76,7 @@ import org.springframework.util.ReflectionUtils;
 
 /**
  * {@link org.springframework.orm.jpa.JpaDialect} implementation for
- * Hibernate EntityManager. Developed against Hibernate 5.0/5.1/5.2.
+ * Hibernate EntityManager. Developed against Hibernate 5.1/5.2/5.3.
  *
  * @author Juergen Hoeller
  * @author Costin Leau
@@ -119,10 +120,8 @@ public class HibernateJpaDialect extends DefaultJpaDialect {
 	 * Hibernate Session, that is, whether to apply a transaction-specific
 	 * isolation level and/or the transaction's read-only flag to the underlying
 	 * JDBC Connection.
-	 * <p>Default is "true" on Hibernate EntityManager 4.x (with its 'on-close'
-	 * connection release mode.
-	 * <p>If you turn this flag off, JPA transaction management will not support
-	 * per-transaction isolation levels anymore. It will not call
+	 * <p>Default is "true". If you turn this flag off, JPA transaction management
+	 * will not support per-transaction isolation levels anymore. It will not call
 	 * {@code Connection.setReadOnly(true)} for read-only transactions anymore either.
 	 * If this flag is turned off, no cleanup of a JDBC Connection is required after
 	 * a transaction, since no Connection settings will get modified.
@@ -195,7 +194,8 @@ public class HibernateJpaDialect extends DefaultJpaDialect {
 				session.setDefaultReadOnly(true);
 			}
 		}
-		return new SessionTransactionData(session, previousFlushMode, preparedCon, previousIsolationLevel);
+		return new SessionTransactionData(
+				session, previousFlushMode, preparedCon, previousIsolationLevel, definition.isReadOnly());
 	}
 
 	@Override
@@ -204,7 +204,7 @@ public class HibernateJpaDialect extends DefaultJpaDialect {
 
 		Session session = getSession(entityManager);
 		FlushMode previousFlushMode = prepareFlushMode(session, readOnly);
-		return new SessionTransactionData(session, previousFlushMode, null, null);
+		return new SessionTransactionData(session, previousFlushMode, null, null, readOnly);
 	}
 
 	@SuppressWarnings("deprecation")
@@ -371,13 +371,16 @@ public class HibernateJpaDialect extends DefaultJpaDialect {
 		@Nullable
 		private final Integer previousIsolationLevel;
 
+		private final boolean readOnly;
+
 		public SessionTransactionData(Session session, @Nullable FlushMode previousFlushMode,
-				@Nullable Connection preparedCon, @Nullable Integer previousIsolationLevel) {
+				@Nullable Connection preparedCon, @Nullable Integer previousIsolationLevel, boolean readOnly) {
 
 			this.session = session;
 			this.previousFlushMode = previousFlushMode;
 			this.preparedCon = preparedCon;
 			this.previousIsolationLevel = previousIsolationLevel;
+			this.readOnly = readOnly;
 		}
 
 		@SuppressWarnings("deprecation")
@@ -393,7 +396,8 @@ public class HibernateJpaDialect extends DefaultJpaDialect {
 							"make sure to use connection release mode ON_CLOSE (the default) and to run against " +
 							"Hibernate 4.2+ (or switch HibernateJpaDialect's prepareConnection flag to false");
 				}
-				DataSourceUtils.resetConnectionAfterTransaction(conToReset, this.previousIsolationLevel);
+				DataSourceUtils.resetConnectionAfterTransaction(
+						conToReset, this.previousIsolationLevel, this.readOnly);
 			}
 		}
 	}
@@ -413,10 +417,6 @@ public class HibernateJpaDialect extends DefaultJpaDialect {
 		@Override
 		public Connection getConnection() {
 			return doGetConnection(this.session);
-		}
-
-		@Override
-		public void releaseConnection(Connection con) {
 		}
 
 		public static Connection doGetConnection(Session session) {
